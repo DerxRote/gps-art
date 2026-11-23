@@ -76,11 +76,20 @@ async function handleRoute(request) {
   return json({ coords: out, distance });
 }
 
+// Nominatim erlaubt höchstens 1 Anfrage pro Sekunde (Nutzungsregeln). Pro Worker-Instanz drosseln.
+let lastNominatim = 0;
+async function nominatimSlot() {
+  const wait = lastNominatim + 1100 - Date.now();
+  lastNominatim = Math.max(Date.now(), lastNominatim + 1100);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+}
+
 async function handleSearch(url) {
   const q = (url.searchParams.get('q') || '').trim().slice(0, 200);
   if (q.length < 2) return json({ results: [] });
   const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=de&q=' +
     encodeURIComponent(q);
+  await nominatimSlot();
   const res = await fetch(api, {
     headers: { 'User-Agent': UA },
     cf: { cacheTtl: 86400, cacheEverything: true }

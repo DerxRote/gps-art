@@ -127,7 +127,8 @@ function simplify(pts, tol) {
 const map = L.map('map', { zoomControl: true, attributionControl: true }).setView(state.center, 14);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> · ' +
+    'Routen: <a href="https://routing.openstreetmap.de/" target="_blank" rel="noopener">FOSSGIS</a>'
 }).addTo(map);
 map.attributionControl.setPrefix(false);
 
@@ -397,7 +398,13 @@ $('gpxBtn').addEventListener('click', () => {
   const pts = state.route.coords.map(([lat, lon]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"/>`).join('\n');
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="route.pfleger.work" xmlns="http://www.topografix.com/GPX/1/1">
-  <metadata><name>${esc(name)}</name><time>${new Date().toISOString()}</time></metadata>
+  <metadata>
+    <name>${esc(name)}</name>
+    <desc>Route auf Wegen aus OpenStreetMap-Daten, berechnet mit dem Routing-Dienst der FOSSGIS. © OpenStreetMap-Mitwirkende, ODbL.</desc>
+    <copyright author="OpenStreetMap-Mitwirkende"><license>https://opendatacommons.org/licenses/odbl/1-0/</license></copyright>
+    <link href="https://www.openstreetmap.org/copyright"><text>© OpenStreetMap-Mitwirkende</text></link>
+    <time>${new Date().toISOString()}</time>
+  </metadata>
   <trk>
     <name>${esc(name)}</name>
     <type>${state.profile === 'bike' ? 'cycling' : 'running'}</type>

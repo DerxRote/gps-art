@@ -1,0 +1,21 @@
+{
+  // GPS-Art auf Cloudflare Workers (Repo DerxRote/gps-art).
+  // Statische Seite aus public/, Worker (src/worker.js) nur für /api/*.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gps-art",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+  // Nur die eigene Domain, keine öffentliche *.workers.dev-Adresse.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "route.pfleger.work", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

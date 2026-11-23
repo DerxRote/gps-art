@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GPS-Art · Male mit deiner Route</title>
+<meta name="description" content="Schreib einen Text oder zeichne eine Form auf die Karte. Die App legt sie auf echte Wege. GPX laden, in Komoot importieren, loslaufen.">
+<meta name="theme-color" content="#f4f2ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="panel" id="panel">
+    <header class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 25c0-6 6-6 8-11s-1-8 3-8 5 4 2 7-3 7 5 7"/><circle cx="7" cy="25" r="2.4"/></svg>
+      <div>
+        <h1>GPS-Art</h1>
+        <p>Male mit deiner Lauf- oder Radroute</p>
+      </div>
+    </header>
+
+    <section class="step">
+      <h2><span class="num">1</span> Wo?</h2>
+      <form class="search" id="searchForm" autocomplete="off">
+        <input id="searchInput" type="search" placeholder="Ort oder Adresse, z. B. Augsburg Rathaus" aria-label="Ort suchen">
+        <button type="submit" class="btn small">Suchen</button>
+      </form>
+      <ul class="results" id="searchResults" hidden></ul>
+      <p class="hint">Oder tippe auf die Karte. Den Punkt <span class="dot"></span> kannst du auch verschieben.
+        <button type="button" class="link" id="locateBtn">Mein Standort</button></p>
+    </section>
+
+    <section class="step">
+      <h2><span class="num">2</span> Was?</h2>
+      <div class="seg" role="tablist" id="modeSeg">
+        <button type="button" data-mode="text" class="on">Text</button>
+        <button type="button" data-mode="shape">Form</button>
+        <button type="button" data-mode="draw">Zeichnen</button>
+      </div>
+      <div class="mode" data-for="text">
+        <input id="textInput" type="text" maxlength="24" value="HALLO" aria-label="Text">
+        <p class="hint" id="textHint"></p>
+      </div>
+      <div class="mode" data-for="shape" hidden>
+        <div class="shapes" id="shapeGrid"></div>
+      </div>
+      <div class="mode" data-for="draw" hidden>
+        <button type="button" class="btn ghost wide" id="drawBtn">Zeichnen starten</button>
+        <p class="hint" id="drawHint">Drücke auf „Zeichnen starten“ und male dann mit Finger oder Maus in einem Zug auf die Karte.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2><span class="num">3</span> Wie groß?</h2>
+      <label class="row">
+        <span>Länge</span>
+        <output id="kmOut">10 km</output>
+      </label>
+      <input id="kmInput" type="range" min="2" max="60" step="0.5" value="10" aria-label="Länge in Kilometern">
+      <label class="row">
+        <span>Drehen</span>
+        <output id="rotOut">0°</output>
+      </label>
+      <input id="rotInput" type="range" min="-180" max="180" step="5" value="0" aria-label="Drehen in Grad">
+    </section>
+
+    <section class="step">
+      <h2><span class="num">4</span> Womit?</h2>
+      <div class="seg" id="profileSeg">
+        <button type="button" data-profile="foot" class="on">Laufen</button>
+        <button type="button" data-profile="bike">Rad</button>
+      </div>
+    </section>
+
+    <button type="button" class="btn primary wide" id="routeBtn">Auf Wege legen</button>
+    <p class="status" id="status" role="status"></p>
+
+    <section class="result" id="result" hidden>
+      <div class="stats">
+        <div><span class="big" id="resKm">–</span><span class="label">Route</span></div>
+        <div><span class="big" id="resTime">–</span><span class="label" id="resTimeLabel">Laufzeit ca.</span></div>
+      </div>
+      <button type="button" class="btn primary wide" id="gpxBtn">GPX herunterladen</button>
+      <details class="komoot">
+        <summary>So kommt die Route in Komoot</summary>
+        <ol>
+          <li>GPX-Datei hier herunterladen.</li>
+          <li>Am Computer <strong>komoot.com</strong> öffnen und anmelden.</li>
+          <li>Oben auf <strong>Planen</strong> klicken, dann <strong>GPX-Datei importieren</strong> wählen.</li>
+          <li>Die Datei auswählen und die Tour speichern.</li>
+          <li>In der Komoot-App unter <strong>Profil → Geplant</strong> öffnen und starten.</li>
+        </ol>
+        <p class="hint">Komoot plant beim Import manchmal neu. Wenn die Form dabei kaputtgeht, wähle beim Import „Original-Route beibehalten“ (oder lade die Datei bei Strava oder Garmin hoch). <a href="https://support.komoot.com/hc/articles/10115477099674" rel="noopener" target="_blank">Hilfe von Komoot</a></p>
+      </details>
+    </section>
+
+    <footer class="foot">
+      <a href="https://pfleger.work">pfleger.work</a> · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a>
+    </footer>
+  </aside>
+
+  <main class="mapwrap">
+    <div id="map" aria-label="Karte"></div>
+    <div class="legend" id="legend">
+      <span><i class="l-plan"></i>Vorlage</span>
+      <span><i class="l-route"></i>Route auf Wegen</span>
+    </div>
+    <div class="drawbar" id="drawBar" hidden>
+      <span>Jetzt in einem Zug malen</span>
+      <button type="button" class="btn small" id="drawCancel">Abbrechen</button>
+    </div>
+  </main>
+</div>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

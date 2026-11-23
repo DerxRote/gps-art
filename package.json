@@ -1,0 +1,12 @@
+{
+  "name": "gps-art",
+  "private": true,
+  "description": "GPS-Art – Text oder Form auf der Karte zeichnen und als Lauf- oder Radroute (GPX) laden. route.pfleger.work",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.155.0"
+  }
+}

@@ -17,13 +17,14 @@ const state = {
   km: saved.km || 10,
   rot: saved.rot || 0,
   profile: saved.profile || 'foot',
+  start: saved.start || 'anfang',                // 'anfang' oder 'mitte'
   fit: 1,                                        // Korrektur, damit die echte Route die gewünschte Länge hat
   route: null                                    // { coords: [[lat,lon], …], meters }
 };
 function persist() {
   try {
-    const { center, mode, text, shape, drawn, km, rot, profile } = state;
-    localStorage.setItem(STORE, JSON.stringify({ center, mode, text, shape, drawn, km, rot, profile }));
+    const { center, mode, text, shape, drawn, km, rot, profile, start } = state;
+    localStorage.setItem(STORE, JSON.stringify({ center, mode, text, shape, drawn, km, rot, profile, start }));
   } catch { /* egal */ }
 }
 
@@ -60,10 +61,40 @@ function planMeters() {
   const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  const len = pathLength(p);
+  let q = p.map(([x, y]) => [x - cx, y - cy]);
+  if (state.start === 'mitte') q = startAtMiddle(q);
+  const len = pathLength(q);
   if (!len) return null;
   const s = state.km * 1000 * state.fit / len;
-  return { pts: p.map(([x, y]) => [(x - cx) * s, (y - cy) * s]), hw: (maxX - minX) / 2 * s, hh: (maxY - minY) / 2 * s };
+  return { pts: q.map(([x, y]) => [x * s, y * s]), hw: (maxX - minX) / 2 * s, hh: (maxY - minY) / 2 * s };
+}
+
+function isClosed(p) {
+  return p.length > 2 && Math.hypot(p[0][0] - p[p.length - 1][0], p[0][1] - p[p.length - 1][1]) < 1e-6;
+}
+
+/**
+ * Linie so umbauen, dass sie am Punkt beginnt, der der Mitte (0,0) am nächsten liegt.
+ * Geschlossene Form (Herz, Kreis …): einfach dort einsteigen und einmal herum.
+ * Offene Linie (Text): erst auf derselben Linie zum Anfang zurück, dann alles bis zum Ende.
+ * Das Zurücklaufen sieht man auf der Karte nicht, es macht die Strecke nur etwas länger.
+ */
+function startAtMiddle(p) {
+  if (p.length < 2) return p;
+  let best = Infinity, bi = 0, bp = p[0];
+  for (let i = 1; i < p.length; i++) {
+    const [x1, y1] = p[i - 1], [x2, y2] = p[i];
+    const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / l2)) : 0;
+    const q = [x1 + t * dx, y1 + t * dy], d = Math.hypot(q[0], q[1]);
+    if (d < best - 1e-9) { best = d; bi = i; bp = q; }
+  }
+  const head = p.slice(0, bi), tail = p.slice(bi);   // bp liegt zwischen head[last] und tail[0]
+  const closed = isClosed(p);
+  const out = closed
+    ? [bp, ...tail, ...head.slice(1), bp]
+    : [bp, ...head.slice().reverse(), ...head, ...tail];
+  return out.filter((q, i) => !i || Math.hypot(q[0] - out[i - 1][0], q[1] - out[i - 1][1]) > 1e-9);
 }
 function rotate([x, y], deg) {
   const a = rad(-deg), c = Math.cos(a), si = Math.sin(a);
@@ -263,6 +294,11 @@ function render() {
   document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
   document.querySelectorAll('.mode').forEach(m => { m.hidden = m.dataset.for !== state.mode; });
   document.querySelectorAll('#profileSeg button').forEach(b => b.classList.toggle('on', b.dataset.profile === state.profile));
+  document.querySelectorAll('#startSeg button').forEach(b => b.classList.toggle('on', b.dataset.start === state.start));
+  $('startHint').textContent = state.start === 'mitte'
+    ? (isClosed(unitPath()) ? 'Du startest am Rand nahe der Mitte und läufst einmal herum.' : 'Du startest nahe der Mitte. Bei Text läufst du erst auf der Linie zum Anfang zurück, dann alles bis zum Ende. Das macht die Strecke etwas länger, die Schrift wird dafür etwas kleiner.')
+    : 'Du startest am Anfang der Linie (beim Text: unten links am ersten Buchstaben).';
+  if (plan.length > 1 && !state.route) startMarker.setLatLng(plan[0]).addTo(map);
   document.querySelectorAll('#shapeGrid button').forEach(b => b.classList.toggle('on', b.dataset.shape === state.shape));
   const t = normalizeText(state.text);
   const hint = $('textHint');
@@ -288,6 +324,10 @@ $('modeSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   state.mode = b.dataset.mode; changed(true, true);
   if (state.mode === 'draw' && !state.drawn) startDrawing();
+});
+$('startSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.start = b.dataset.start; changed();
 });
 $('profileSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;

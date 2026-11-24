@@ -159,8 +159,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 .drawbar .btn { background: rgba(255,255,255,.15); border-color: transparent; color: #fff; }
 .mapwrap.drawing #map { cursor: crosshair; touch-action: none; }
 
-.handle { width: 22px; height: 22px; border-radius: 50%; background: var(--plan); border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,.35); cursor: grab; }
+.handle { position: relative; width: 22px; height: 22px; border-radius: 50%; background: var(--plan); border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35); pointer-events: none; }
+.handle::before, .handle::after { content: ""; position: absolute; left: 50%; top: 50%; background: #fff; border-radius: 1px;
+  transform: translate(-50%, -50%); }
+.handle::before { width: 10px; height: 2px; }
+.handle::after { width: 2px; height: 10px; }
+#map.over-box, #map.over-box .leaflet-interactive { cursor: move; }
+#map.moving, #map.moving * { cursor: grabbing !important; }
 .pin { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: #fff; font: 700 13px/1 var(--font-body);
   border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
 .pin.start { background: var(--ok); }

@@ -287,7 +287,7 @@ function render() {
   const plan = planLatLngs();
   planLine.setLatLngs(plan);
   const box = boxSize();
-  boxShape.setLatLngs(box && !drawing ? boxLatLngs(box) : []);
+  boxShape.setLatLngs(box && !drawing && !state.route ? boxLatLngs(box) : []);   // Rahmen nur beim Platzieren
   handle.setLatLng(state.center);
   $('kmOut').textContent = state.km.toLocaleString('de-DE') + ' km';
   $('rotOut').textContent = state.rot + '°';
@@ -481,6 +481,7 @@ $('routeBtn').addEventListener('click', async () => {
       r = await snap(planLatLngs());
     }
     state.route = r;
+    boxShape.setLatLngs([]);
     routeLine.setLatLngs(r.coords);
     startMarker.setLatLng(r.coords[0]).addTo(map);
     endMarker.setLatLng(r.coords[r.coords.length - 1]).addTo(map);

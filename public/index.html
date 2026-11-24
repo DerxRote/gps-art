@@ -30,7 +30,7 @@
         <button type="submit" class="btn small">Suchen</button>
       </form>
       <ul class="results" id="searchResults" hidden></ul>
-      <p class="hint">Oder tippe auf die Karte. Den Punkt <span class="dot"></span> kannst du auch verschieben.
+      <p class="hint">Oder tippe auf die Karte: Dort kommt die Mitte <span class="dot"></span> hin. Zum Verschieben fasse den Rahmen irgendwo an und ziehe ihn.
         <button type="button" class="link" id="locateBtn">Mein Standort</button></p>
     </section>
 
@@ -74,6 +74,12 @@
         <button type="button" data-profile="foot" class="on">Laufen</button>
         <button type="button" data-profile="bike">Rad</button>
       </div>
+      <span class="row"><span>Wo beginnt der Lauf?</span></span>
+      <div class="seg" id="startSeg">
+        <button type="button" data-start="anfang" class="on">Am ersten Buchstaben</button>
+        <button type="button" data-start="mitte">In der Mitte</button>
+      </div>
+      <p class="hint" id="startHint"></p>
     </section>
 
     <button type="button" class="btn primary wide" id="routeBtn">Auf Wege legen</button>

@@ -17,13 +17,14 @@ const state = {
   km: saved.km || 10,
   rot: saved.rot || 0,
   profile: saved.profile || 'foot',
+  start: saved.start || 'anfang',                // 'anfang' oder 'mitte'
   fit: 1,                                        // Korrektur, damit die echte Route die gewünschte Länge hat
   route: null                                    // { coords: [[lat,lon], …], meters }
 };
 function persist() {
   try {
-    const { center, mode, text, shape, drawn, km, rot, profile } = state;
-    localStorage.setItem(STORE, JSON.stringify({ center, mode, text, shape, drawn, km, rot, profile }));
+    const { center, mode, text, shape, drawn, km, rot, profile, start } = state;
+    localStorage.setItem(STORE, JSON.stringify({ center, mode, text, shape, drawn, km, rot, profile, start }));
   } catch { /* egal */ }
 }
 
@@ -53,20 +54,77 @@ function unitPath() {
   return state.drawn || [];
 }
 
+/** Vorlage in Meter rund um die Mitte: zentriert, auf Ziel-Länge skaliert (noch nicht gedreht). */
+function planMeters() {
+  const p = unitPath();
+  if (p.length < 2) return null;
+  const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  let q = p.map(([x, y]) => [x - cx, y - cy]);
+  if (state.start === 'mitte') q = startAtMiddle(q);
+  const len = pathLength(q);
+  if (!len) return null;
+  const s = state.km * 1000 * state.fit / len;
+  return { pts: q.map(([x, y]) => [x * s, y * s]), hw: (maxX - minX) / 2 * s, hh: (maxY - minY) / 2 * s };
+}
+
+function isClosed(p) {
+  return p.length > 2 && Math.hypot(p[0][0] - p[p.length - 1][0], p[0][1] - p[p.length - 1][1]) < 1e-6;
+}
+
+/**
+ * Linie so umbauen, dass sie am Punkt beginnt, der der Mitte (0,0) am nächsten liegt.
+ * Geschlossene Form (Herz, Kreis …): einfach dort einsteigen und einmal herum.
+ * Offene Linie (Text): erst auf derselben Linie zum Anfang zurück, dann alles bis zum Ende.
+ * Das Zurücklaufen sieht man auf der Karte nicht, es macht die Strecke nur etwas länger.
+ */
+function startAtMiddle(p) {
+  if (p.length < 2) return p;
+  let best = Infinity, bi = 0, bp = p[0];
+  for (let i = 1; i < p.length; i++) {
+    const [x1, y1] = p[i - 1], [x2, y2] = p[i];
+    const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / l2)) : 0;
+    const q = [x1 + t * dx, y1 + t * dy], d = Math.hypot(q[0], q[1]);
+    if (d < best - 1e-9) { best = d; bi = i; bp = q; }
+  }
+  const head = p.slice(0, bi), tail = p.slice(bi);   // bp liegt zwischen head[last] und tail[0]
+  const closed = isClosed(p);
+  const out = closed
+    ? [bp, ...tail, ...head.slice(1), bp]
+    : [bp, ...head.slice().reverse(), ...head, ...tail];
+  return out.filter((q, i) => !i || Math.hypot(q[0] - out[i - 1][0], q[1] - out[i - 1][1]) > 1e-9);
+}
+function rotate([x, y], deg) {
+  const a = rad(-deg), c = Math.cos(a), si = Math.sin(a);
+  return [x * c - y * si, x * si + y * c];
+}
+
 /** Vorlage in Breite/Länge: zentriert, auf Ziel-Länge skaliert, gedreht. */
 function planLatLngs() {
-  const p = unitPath();
-  if (p.length < 2) return [];
-  const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const len = pathLength(p);
-  if (!len) return [];
-  const s = state.km * 1000 * state.fit / len;
-  const a = rad(-state.rot), c = Math.cos(a), si = Math.sin(a);
-  return p.map(([x, y]) => {
-    const mx = (x - cx) * s, my = (y - cy) * s;
-    return toLatLng([mx * c - my * si, mx * si + my * c], state.center);
-  });
+  const m = planMeters();
+  if (!m) return [];
+  return m.pts.map(q => toLatLng(rotate(q, state.rot), state.center));
+}
+
+/** Rahmen um die Vorlage (halbe Breite/Höhe in Metern, mit etwas Rand). */
+function boxSize() {
+  const m = planMeters();
+  if (!m) return null;
+  const pad = Math.max(m.hw, m.hh) * 0.12 + 15;
+  return { hw: m.hw + pad, hh: m.hh + pad };
+}
+function boxLatLngs(b) {
+  return [[-b.hw, -b.hh], [b.hw, -b.hh], [b.hw, b.hh], [-b.hw, b.hh]]
+    .map(q => toLatLng(rotate(q, state.rot), state.center));
+}
+/** Liegt der Punkt (Breite/Länge) innerhalb des Rahmens? */
+function inBox(latlng) {
+  const b = boxSize();
+  if (!b) return false;
+  const [x, y] = rotate(toMeters([latlng.lat, latlng.lng], state.center), -state.rot);
+  return Math.abs(x) <= b.hw && Math.abs(y) <= b.hh;
 }
 
 /** Wegpunkte für die Berechnung: alle Ecken plus Zwischenpunkte im Abstand `step` Meter. */
@@ -133,21 +191,68 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 map.attributionControl.setPrefix(false);
 
 const css = getComputedStyle(document.documentElement);
+const boxShape = L.polygon([], {
+  color: css.getPropertyValue('--plan').trim() || '#2f5d8a', weight: 2, dashArray: '2 6', opacity: .9,
+  fillColor: css.getPropertyValue('--plan').trim() || '#2f5d8a', fillOpacity: .07, interactive: false
+}).addTo(map);
 const planLine = L.polyline([], { color: css.getPropertyValue('--plan').trim() || '#2f5d8a', weight: 3, dashArray: '6 7', opacity: .9 }).addTo(map);
 const routeLine = L.polyline([], { color: css.getPropertyValue('--accent').trim() || '#e2531f', weight: 5, opacity: .9 }).addTo(map);
 const drawLine = L.polyline([], { color: css.getPropertyValue('--plan').trim() || '#2f5d8a', weight: 4 }).addTo(map);
 const pinIcon = (cls, txt) => L.divIcon({ className: '', html: `<div class="pin ${cls}">${txt}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
 const startMarker = L.marker(state.center, { icon: pinIcon('start', 'S'), interactive: false, keyboard: false });
 const endMarker = L.marker(state.center, { icon: pinIcon('end', 'Z'), interactive: false, keyboard: false });
+// Mittelpunkt: Hier liegt die Mitte der Vorlage. Ein Tipp auf die Karte setzt die Mitte dorthin.
 const handle = L.marker(state.center, {
-  draggable: true, autoPan: true, title: 'Verschieben',
+  interactive: false, keyboard: false,
   icon: L.divIcon({ className: '', html: '<div class="handle"></div>', iconSize: [22, 22], iconAnchor: [11, 11] })
 }).addTo(map);
-handle.on('drag', e => { const ll = e.target.getLatLng(); state.center = [ll.lat, ll.lng]; changed(false); });
-handle.on('dragend', () => persist());
+
+// Verschieben: irgendwo im Rahmen anfassen und ziehen (Maus und Finger).
+let boxDrag = null;          // { id, start: [lat,lon] Mitte beim Start, from: Punkt beim Start, moved }
+let suppressClick = false;
+const activePointers = new Set();
+const mapNode = document.getElementById('map');
+mapNode.addEventListener('pointerdown', e => {
+  activePointers.add(e.pointerId);
+  if (drawing) return;
+  if (activePointers.size > 1) { endBoxDrag(); return; }   // zwei Finger: Karte zoomen lassen
+  if (e.button > 0) return;
+  if (e.target.closest('.leaflet-control')) return;
+  const ll = map.mouseEventToLatLng(e);
+  if (!inBox(ll)) return;
+  boxDrag = { id: e.pointerId, start: state.center.slice(), from: ll, moved: false };
+  map.dragging.disable();
+  mapNode.classList.add('moving');
+  try { mapNode.setPointerCapture(e.pointerId); } catch { /* egal */ }
+}, true);
+mapNode.addEventListener('pointermove', e => {
+  if (!boxDrag || e.pointerId !== boxDrag.id) {
+    if (!drawing && !boxDrag && e.pointerType === 'mouse') mapNode.classList.toggle('over-box', inBox(map.mouseEventToLatLng(e)));
+    return;
+  }
+  e.preventDefault();
+  const ll = map.mouseEventToLatLng(e);
+  const p0 = map.latLngToContainerPoint(boxDrag.from), p1 = map.latLngToContainerPoint(ll);
+  if (!boxDrag.moved && p0.distanceTo(p1) < 4) return;
+  boxDrag.moved = true;
+  state.center = [boxDrag.start[0] + (ll.lat - boxDrag.from.lat), boxDrag.start[1] + (ll.lng - boxDrag.from.lng)];
+  changed(false, false, false);
+}, true);
+function endBoxDrag() {
+  if (!boxDrag) return;
+  if (boxDrag.moved) { suppressClick = true; persist(); }
+  else suppressClick = true;   // Tipp in den Rahmen: nichts tun
+  boxDrag = null;
+  map.dragging.enable();
+  mapNode.classList.remove('moving');
+  setTimeout(() => { suppressClick = false; }, 300);
+}
+const pointerEnd = e => { activePointers.delete(e.pointerId); if (boxDrag && e.pointerId === boxDrag.id) endBoxDrag(); };
+mapNode.addEventListener('pointerup', pointerEnd, true);
+mapNode.addEventListener('pointercancel', pointerEnd, true);
 
 map.on('click', e => {
-  if (drawing) return;
+  if (drawing || suppressClick) return;
   state.center = [e.latlng.lat, e.latlng.lng];
   changed(false);
 });
@@ -166,7 +271,7 @@ function fmtDuration(min) {
 }
 function setStatus(msg, error = false) { const el = $('status'); el.textContent = msg; el.classList.toggle('error', error); }
 
-function changed(resetFit = true, refit = false) {
+function changed(resetFit = true, refit = false, save = true) {
   if (resetFit) state.fit = 1;
   state.route = null;
   routeLine.setLatLngs([]);
@@ -175,22 +280,26 @@ function changed(resetFit = true, refit = false) {
   setStatus('');
   render();
   if (refit) fitView();
-  persist();
+  if (save) persist();
 }
 
 function render() {
   const plan = planLatLngs();
   planLine.setLatLngs(plan);
+  const box = boxSize();
+  boxShape.setLatLngs(box && !drawing && !state.route ? boxLatLngs(box) : []);   // Rahmen nur beim Platzieren
   handle.setLatLng(state.center);
   $('kmOut').textContent = state.km.toLocaleString('de-DE') + ' km';
   $('rotOut').textContent = state.rot + '°';
   document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
   document.querySelectorAll('.mode').forEach(m => { m.hidden = m.dataset.for !== state.mode; });
   document.querySelectorAll('#profileSeg button').forEach(b => b.classList.toggle('on', b.dataset.profile === state.profile));
+  document.querySelectorAll('#startSeg button').forEach(b => b.classList.toggle('on', b.dataset.start === state.start));
+  $('startHint').textContent = state.start === 'mitte'
+    ? (isClosed(unitPath()) ? 'Du startest am Rand nahe der Mitte und läufst einmal herum.' : 'Du startest nahe der Mitte. Bei Text läufst du erst auf der Linie zum Anfang zurück, dann alles bis zum Ende. Das macht die Strecke etwas länger, die Schrift wird dafür etwas kleiner.')
+    : 'Du startest am Anfang der Linie (beim Text: unten links am ersten Buchstaben).';
+  if (plan.length > 1 && !state.route) startMarker.setLatLng(plan[0]).addTo(map);
   document.querySelectorAll('#shapeGrid button').forEach(b => b.classList.toggle('on', b.dataset.shape === state.shape));
-  if (plan.length > 1) {
-    startMarker.setLatLng(plan[0]).addTo(map);
-  }
   const t = normalizeText(state.text);
   const hint = $('textHint');
   if (state.mode === 'text') {
@@ -215,6 +324,10 @@ $('modeSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   state.mode = b.dataset.mode; changed(true, true);
   if (state.mode === 'draw' && !state.drawn) startDrawing();
+});
+$('startSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.start = b.dataset.start; changed();
 });
 $('profileSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -273,6 +386,7 @@ const mapEl = $('map');
 
 function startDrawing() {
   drawing = true; drawPts = [];
+  boxShape.setLatLngs([]);
   map.dragging.disable(); map.doubleClickZoom.disable(); map.boxZoom.disable(); map.scrollWheelZoom.disable();
   if (map.tap) map.tap.disable();
   document.querySelector('.mapwrap').classList.add('drawing');
@@ -289,6 +403,7 @@ function stopDrawing() {
   $('drawBtn').textContent = state.drawn ? 'Neu zeichnen' : 'Zeichnen starten';
   $('drawBtn').classList.remove('active');
   drawLine.setLatLngs([]);
+  render();
 }
 $('drawBtn').addEventListener('click', () => drawing ? stopDrawing() : startDrawing());
 $('drawCancel').addEventListener('click', stopDrawing);
@@ -366,6 +481,7 @@ $('routeBtn').addEventListener('click', async () => {
       r = await snap(planLatLngs());
     }
     state.route = r;
+    boxShape.setLatLngs([]);
     routeLine.setLatLngs(r.coords);
     startMarker.setLatLng(r.coords[0]).addTo(map);
     endMarker.setLatLng(r.coords[r.coords.length - 1]).addTo(map);
